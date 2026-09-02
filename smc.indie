@@ -1,0 +1,1420 @@
+# indie:lang_version = 5
+# Smart Money Concepts for TakeProfit / Exness Terminal
+# Version: 1.0.0
+# Pure SMC port (no third-party branding). Historical display mode.
+
+from math import nan, isnan
+from indie import (
+    indicator, param, color, plot, MainContext, line_style,
+    MutSeriesF, sec_context, TimeFrame, Color,
+)
+from indie.algorithms import Atr, Highest, Lowest, Tr, CumSum
+from indie.drawings import (
+    LabelAbs, LineSegment, Rectangle, AbsolutePosition, callout_position,
+)
+from indie.color import rgba
+
+# ─── constants ────────────────────────────────────────────────────────────────
+BULLISH_LEG = 1
+BEARISH_LEG = 0
+BULLISH = 1
+BEARISH = -1
+
+GREEN = rgba(8, 153, 129, 1.0)
+RED = rgba(242, 54, 69, 1.0)
+BLUE = rgba(33, 87, 243, 1.0)
+GRAY = rgba(135, 139, 148, 1.0)
+MONO_BULLISH = rgba(178, 181, 190, 1.0)
+MONO_BEARISH = rgba(93, 96, 107, 1.0)
+
+_FONT_TINY = 8
+_FONT_SMALL = 10
+_FONT_NORMAL = 12
+
+_OB_POOL = 6
+_FVG_POOL = 6
+_STRUCT_POOL = 12
+_EQHL_POOL = 6
+_SWING_LBL_POOL = 6
+_OB_LOOKBACK = 60
+_LINE_EXTEND_BARS = 20.0
+_BAR_DUR_FALLBACK = 60.0
+_ATR_LEN = 100
+
+
+def _font_size(size_str: str) -> int:
+    if size_str == 'Tiny':
+        return _FONT_TINY
+    if size_str == 'Normal':
+        return _FONT_NORMAL
+    return _FONT_SMALL
+
+
+@sec_context
+def FvgContext(self) -> tuple[float, float, float, float, float, float, float, float]:
+    # Matches Pine request.security lookahead values used by LuxAlgo FVG
+    return (
+        self.close[1],
+        self.open[1],
+        self.time[1],
+        self.high[0],
+        self.low[0],
+        self.time[0],
+        self.high[2],
+        self.low[2],
+    )
+
+
+@sec_context
+def LevelsContext(self) -> tuple[float, float, float, float]:
+    return self.high[1], self.low[1], self.time[1], self.time[0]
+
+
+@indicator('Smart Money Concepts', overlay_main_pane=True)
+
+# ── General ───────────────────────────────────────────────────────────────────
+@param.str('style_mode', default='Colored', options=['Colored', 'Monochrome'], title='Style')
+@param.int('max_structure', default=10, min=4, max=12, title='Max Structure Drawings (max 12, Indie limit)')
+
+# ── Internal Structure ────────────────────────────────────────────────────────
+@param.bool('show_internal', default=True, title='Show Internal Structure')
+@param.str('internal_bull', default='All', options=['All', 'BOS', 'CHoCH'], title='Internal Bullish')
+@param.color('internal_bull_color', default=GREEN, title='Internal Bullish Color')
+@param.str('internal_bear', default='All', options=['All', 'BOS', 'CHoCH'], title='Internal Bearish')
+@param.color('internal_bear_color', default=RED, title='Internal Bearish Color')
+@param.bool('internal_confluence', default=False, title='Internal Confluence Filter')
+@param.str('internal_label_size', default='Tiny', options=['Tiny', 'Small', 'Normal'], title='Internal Label Size')
+
+# ── Swing Structure ───────────────────────────────────────────────────────────
+@param.bool('show_swing', default=True, title='Show Swing Structure')
+@param.str('swing_bull', default='All', options=['All', 'BOS', 'CHoCH'], title='Swing Bullish')
+@param.color('swing_bull_color', default=GREEN, title='Swing Bullish Color')
+@param.str('swing_bear', default='All', options=['All', 'BOS', 'CHoCH'], title='Swing Bearish')
+@param.color('swing_bear_color', default=RED, title='Swing Bearish Color')
+@param.str('swing_label_size', default='Small', options=['Tiny', 'Small', 'Normal'], title='Swing Label Size')
+@param.bool('show_swing_points', default=False, title='Show Swing Points')
+@param.int('swings_length', default=50, min=10, max=200, title='Swing Length')
+@param.bool('show_strong_weak', default=True, title='Show Strong/Weak High/Low')
+
+# ── Order Blocks ──────────────────────────────────────────────────────────────
+@param.bool('show_internal_ob', default=True, title='Internal Order Blocks')
+@param.int('internal_ob_count', default=4, min=1, max=6, title='Internal OB Count')
+@param.bool('show_swing_ob', default=False, title='Swing Order Blocks')
+@param.int('swing_ob_count', default=4, min=1, max=6, title='Swing OB Count')
+@param.str('ob_filter', default='Atr', options=['Atr', 'Cumulative Mean Range'], title='Order Block Filter')
+@param.str('ob_mitigation', default='High/Low', options=['Close', 'High/Low'], title='Order Block Mitigation')
+@param.color('internal_bull_ob_color', default=rgba(49, 121, 245, 0.20), title='Internal Bullish OB')
+@param.color('internal_bear_ob_color', default=rgba(247, 124, 128, 0.20), title='Internal Bearish OB')
+@param.color('swing_bull_ob_color', default=rgba(24, 72, 204, 0.20), title='Swing Bullish OB')
+@param.color('swing_bear_ob_color', default=rgba(178, 40, 51, 0.20), title='Swing Bearish OB')
+
+# ── Equal Highs / Lows ────────────────────────────────────────────────────────
+@param.bool('show_eqhl', default=True, title='Equal High/Low')
+@param.int('eqhl_length', default=3, min=1, max=50, title='EQH/EQL Bars Confirmation')
+@param.float('eqhl_threshold', default=0.1, min=0.0, max=0.5, step=0.1, title='EQH/EQL Threshold')
+@param.str('eqhl_label_size', default='Tiny', options=['Tiny', 'Small', 'Normal'], title='EQH/EQL Label Size')
+
+# ── Fair Value Gaps ───────────────────────────────────────────────────────────
+@param.bool('show_fvg', default=False, title='Fair Value Gaps')
+@param.bool('fvg_auto_threshold', default=True, title='FVG Auto Threshold')
+@param.time_frame('fvg_timeframe', default='15m', options=['1m', '5m', '15m', '30m', '1h', '4h', '1D'], title='FVG Timeframe')
+@param.color('fvg_bull_color', default=rgba(0, 255, 104, 0.30), title='Bullish FVG')
+@param.color('fvg_bear_color', default=rgba(255, 0, 8, 0.30), title='Bearish FVG')
+@param.int('fvg_extend', default=1, min=0, max=50, title='Extend FVG (bars)')
+
+# ── MTF Levels ────────────────────────────────────────────────────────────────
+@param.bool('show_daily', default=False, title='Daily Levels')
+@param.str('daily_style', default='Solid', options=['Solid', 'Dashed', 'Dotted'], title='Daily Style')
+@param.color('daily_color', default=BLUE, title='Daily Color')
+@param.bool('show_weekly', default=False, title='Weekly Levels')
+@param.str('weekly_style', default='Solid', options=['Solid', 'Dashed', 'Dotted'], title='Weekly Style')
+@param.color('weekly_color', default=BLUE, title='Weekly Color')
+@param.bool('show_monthly', default=False, title='Monthly Levels')
+@param.str('monthly_style', default='Solid', options=['Solid', 'Dashed', 'Dotted'], title='Monthly Style')
+@param.color('monthly_color', default=BLUE, title='Monthly Color')
+
+# ── Premium / Discount ────────────────────────────────────────────────────────
+@param.bool('show_zones', default=False, title='Premium/Discount Zones')
+@param.color('premium_color', default=rgba(242, 54, 69, 0.20), title='Premium Zone')
+@param.color('equilibrium_color', default=rgba(135, 139, 148, 0.20), title='Equilibrium Zone')
+@param.color('discount_color', default=rgba(8, 153, 129, 0.20), title='Discount Zone')
+
+# Invisible series so calc has a valid numeric return (avoids garbage scale values).
+# pane/status/price_label all off — does not recolor candles or draw a visible line.
+@plot.line(
+    title='_',
+    color=color.TRANSPARENT,
+    display_options=plot.LineDisplayOptions(
+        pane=False,
+        status_line=False,
+        price_label=False,
+    ),
+)
+class Main(MainContext):
+    def __init__(
+        self,
+        fvg_timeframe: TimeFrame,
+        show_fvg: bool,
+        show_daily: bool,
+        show_weekly: bool,
+        show_monthly: bool,
+    ) -> None:
+        self._use_fvg = show_fvg
+        self._use_daily = show_daily
+        self._use_weekly = show_weekly
+        self._use_monthly = show_monthly
+
+        # Pivot / trend state (mutable fields; historical calc runs once per bar)
+        self._sh_level = nan
+        self._sh_last = nan
+        self._sh_crossed = False
+        self._sh_time = 0.0
+        self._sh_index = 0
+
+        self._sl_level = nan
+        self._sl_last = nan
+        self._sl_crossed = False
+        self._sl_time = 0.0
+        self._sl_index = 0
+
+        self._ih_level = nan
+        self._ih_last = nan
+        self._ih_crossed = False
+        self._ih_time = 0.0
+        self._ih_index = 0
+
+        self._il_level = nan
+        self._il_last = nan
+        self._il_crossed = False
+        self._il_time = 0.0
+        self._il_index = 0
+
+        self._eh_level = nan
+        self._eh_time = 0.0
+        self._eh_index = 0
+        self._el_level = nan
+        self._el_time = 0.0
+        self._el_index = 0
+
+        self._swing_bias = 0
+        self._internal_bias = 0
+
+        self._swing_leg = 0
+        self._internal_leg = 0
+        self._eq_leg = 0
+
+        # Trailing extremes for strong/weak + zones
+        self._trail_top = nan
+        self._trail_bottom = nan
+        self._trail_bar_time = 0.0
+        self._trail_bar_index = 0
+        self._trail_top_time = 0.0
+        self._trail_bottom_time = 0.0
+
+        # Drawing pools — create once in __init__ (required for TF/recalc stability)
+        self._max_structure = _STRUCT_POOL
+
+        self._struct_lines: list[LineSegment] = []
+        self._struct_labels: list[LabelAbs] = []
+        self._struct_filled: list[bool] = []
+        self._struct_head = 0
+
+        self._eq_lines: list[LineSegment] = []
+        self._eq_labels: list[LabelAbs] = []
+        self._eq_filled: list[bool] = []
+        self._eq_head = 0
+
+        self._swing_lbls: list[LabelAbs] = []
+        self._swing_filled: list[bool] = []
+        self._swing_lbl_head = 0
+
+        self._i_ob_rects: list[Rectangle] = []
+        self._i_ob_high: list[float] = []
+        self._i_ob_low: list[float] = []
+        self._i_ob_time: list[float] = []
+        self._i_ob_bias: list[int] = []
+        self._i_ob_active: list[bool] = []
+        self._i_ob_head = 0
+
+        self._s_ob_rects: list[Rectangle] = []
+        self._s_ob_high: list[float] = []
+        self._s_ob_low: list[float] = []
+        self._s_ob_time: list[float] = []
+        self._s_ob_bias: list[int] = []
+        self._s_ob_active: list[bool] = []
+        self._s_ob_head = 0
+
+        self._fvg_top_rects: list[Rectangle] = []
+        self._fvg_bot_rects: list[Rectangle] = []
+        self._fvg_top: list[float] = []
+        self._fvg_bottom: list[float] = []
+        self._fvg_bias: list[int] = []
+        self._fvg_active: list[bool] = []
+        self._fvg_head = 0
+
+        self._fvg_cum_abs = 0.0
+
+        self._init_pools()
+
+        # Persistent trailing / zone drawings
+        self._hl_top_line = LineSegment(
+            AbsolutePosition(0.0, 0.0), AbsolutePosition(1.0, 0.0),
+            color=color.TRANSPARENT, line_width=1,
+        )
+        self._hl_bot_line = LineSegment(
+            AbsolutePosition(0.0, 0.0), AbsolutePosition(1.0, 0.0),
+            color=color.TRANSPARENT, line_width=1,
+        )
+        self._hl_top_lbl = LabelAbs(
+            '', AbsolutePosition(0.0, 0.0), font_size=_FONT_TINY,
+            text_color=color.TRANSPARENT, bg_color=color.TRANSPARENT,
+            callout_position=callout_position.BOTTOM_LEFT,
+        )
+        self._hl_bot_lbl = LabelAbs(
+            '', AbsolutePosition(0.0, 0.0), font_size=_FONT_TINY,
+            text_color=color.TRANSPARENT, bg_color=color.TRANSPARENT,
+            callout_position=callout_position.TOP_LEFT,
+        )
+
+        self._zone_premium = Rectangle(
+            AbsolutePosition(0.0, 0.0), AbsolutePosition(1.0, 0.0),
+            bg_color=color.TRANSPARENT, line_color=color.TRANSPARENT, line_width=1,
+        )
+        self._zone_eq = Rectangle(
+            AbsolutePosition(0.0, 0.0), AbsolutePosition(1.0, 0.0),
+            bg_color=color.TRANSPARENT, line_color=color.TRANSPARENT, line_width=1,
+        )
+        self._zone_discount = Rectangle(
+            AbsolutePosition(0.0, 0.0), AbsolutePosition(1.0, 0.0),
+            bg_color=color.TRANSPARENT, line_color=color.TRANSPARENT, line_width=1,
+        )
+        self._zone_premium_lbl = LabelAbs(
+            'Premium', AbsolutePosition(0.0, 0.0), font_size=_FONT_SMALL,
+            text_color=color.TRANSPARENT, bg_color=color.TRANSPARENT,
+            callout_position=callout_position.BOTTOM_LEFT,
+        )
+        self._zone_eq_lbl = LabelAbs(
+            'Equilibrium', AbsolutePosition(0.0, 0.0), font_size=_FONT_SMALL,
+            text_color=color.TRANSPARENT, bg_color=color.TRANSPARENT,
+            callout_position=callout_position.TOP_RIGHT,
+        )
+        self._zone_discount_lbl = LabelAbs(
+            'Discount', AbsolutePosition(0.0, 0.0), font_size=_FONT_SMALL,
+            text_color=color.TRANSPARENT, bg_color=color.TRANSPARENT,
+            callout_position=callout_position.TOP_LEFT,
+        )
+
+        self._d_top_line = LineSegment(
+            AbsolutePosition(0.0, 0.0), AbsolutePosition(1.0, 0.0),
+            color=color.TRANSPARENT, line_width=1,
+        )
+        self._d_bot_line = LineSegment(
+            AbsolutePosition(0.0, 0.0), AbsolutePosition(1.0, 0.0),
+            color=color.TRANSPARENT, line_width=1,
+        )
+        self._d_top_lbl = LabelAbs(
+            'PDH', AbsolutePosition(0.0, 0.0), font_size=_FONT_SMALL,
+            text_color=color.TRANSPARENT, bg_color=color.TRANSPARENT,
+            callout_position=callout_position.TOP_RIGHT,
+        )
+        self._d_bot_lbl = LabelAbs(
+            'PDL', AbsolutePosition(0.0, 0.0), font_size=_FONT_SMALL,
+            text_color=color.TRANSPARENT, bg_color=color.TRANSPARENT,
+            callout_position=callout_position.TOP_RIGHT,
+        )
+
+        self._w_top_line = LineSegment(
+            AbsolutePosition(0.0, 0.0), AbsolutePosition(1.0, 0.0),
+            color=color.TRANSPARENT, line_width=1,
+        )
+        self._w_bot_line = LineSegment(
+            AbsolutePosition(0.0, 0.0), AbsolutePosition(1.0, 0.0),
+            color=color.TRANSPARENT, line_width=1,
+        )
+        self._w_top_lbl = LabelAbs(
+            'PWH', AbsolutePosition(0.0, 0.0), font_size=_FONT_SMALL,
+            text_color=color.TRANSPARENT, bg_color=color.TRANSPARENT,
+            callout_position=callout_position.TOP_RIGHT,
+        )
+        self._w_bot_lbl = LabelAbs(
+            'PWL', AbsolutePosition(0.0, 0.0), font_size=_FONT_SMALL,
+            text_color=color.TRANSPARENT, bg_color=color.TRANSPARENT,
+            callout_position=callout_position.TOP_RIGHT,
+        )
+
+        self._m_top_line = LineSegment(
+            AbsolutePosition(0.0, 0.0), AbsolutePosition(1.0, 0.0),
+            color=color.TRANSPARENT, line_width=1,
+        )
+        self._m_bot_line = LineSegment(
+            AbsolutePosition(0.0, 0.0), AbsolutePosition(1.0, 0.0),
+            color=color.TRANSPARENT, line_width=1,
+        )
+        self._m_top_lbl = LabelAbs(
+            'PMH', AbsolutePosition(0.0, 0.0), font_size=_FONT_SMALL,
+            text_color=color.TRANSPARENT, bg_color=color.TRANSPARENT,
+            callout_position=callout_position.TOP_RIGHT,
+        )
+        self._m_bot_lbl = LabelAbs(
+            'PML', AbsolutePosition(0.0, 0.0), font_size=_FONT_SMALL,
+            text_color=color.TRANSPARENT, bg_color=color.TRANSPARENT,
+            callout_position=callout_position.TOP_RIGHT,
+        )
+
+        # Multi-timeframe series must be created at top-level of __init__
+        # (Indie forbids field creation inside if). Toggle flags only skip usage in calc.
+        (
+            self._fvg_last_close,
+            self._fvg_last_open,
+            self._fvg_last_time,
+            self._fvg_cur_high,
+            self._fvg_cur_low,
+            self._fvg_cur_time,
+            self._fvg_last2_high,
+            self._fvg_last2_low,
+        ) = self.calc_on(FvgContext, time_frame=fvg_timeframe, lookahead=True)
+        self._d_high, self._d_low, self._d_left, self._d_right = self.calc_on(
+            LevelsContext, time_frame=TimeFrame.from_str('1D'), lookahead=True,
+        )
+        self._w_high, self._w_low, self._w_left, self._w_right = self.calc_on(
+            LevelsContext, time_frame=TimeFrame.from_str('1W'), lookahead=True,
+        )
+        self._m_high, self._m_low, self._m_left, self._m_right = self.calc_on(
+            LevelsContext, time_frame=TimeFrame.from_str('1M'), lookahead=True,
+        )
+
+    def _init_pools(self) -> None:
+        # Unique AbsolutePosition per drawing — never share position objects across pool items
+        i = 0
+        while i < _STRUCT_POOL:
+            self._struct_lines.append(LineSegment(
+                AbsolutePosition(0.0, 0.0), AbsolutePosition(1.0, 0.0),
+                color=color.TRANSPARENT, line_width=1,
+            ))
+            self._struct_labels.append(LabelAbs(
+                '', AbsolutePosition(0.0, 0.0), font_size=_FONT_TINY,
+                text_color=color.TRANSPARENT, bg_color=color.TRANSPARENT,
+                callout_position=callout_position.BOTTOM_LEFT,
+            ))
+            self._struct_filled.append(False)
+            i = i + 1
+
+        i = 0
+        while i < _EQHL_POOL:
+            self._eq_lines.append(LineSegment(
+                AbsolutePosition(0.0, 0.0), AbsolutePosition(1.0, 0.0),
+                color=color.TRANSPARENT, line_style=line_style.DOTTED, line_width=1,
+            ))
+            self._eq_labels.append(LabelAbs(
+                '', AbsolutePosition(0.0, 0.0), font_size=_FONT_TINY,
+                text_color=color.TRANSPARENT, bg_color=color.TRANSPARENT,
+                callout_position=callout_position.TOP_LEFT,
+            ))
+            self._eq_filled.append(False)
+            i = i + 1
+
+        i = 0
+        while i < _SWING_LBL_POOL:
+            self._swing_lbls.append(LabelAbs(
+                '', AbsolutePosition(0.0, 0.0), font_size=_FONT_TINY,
+                text_color=color.TRANSPARENT, bg_color=color.TRANSPARENT,
+                callout_position=callout_position.TOP_LEFT,
+            ))
+            self._swing_filled.append(False)
+            i = i + 1
+
+        i = 0
+        while i < _OB_POOL:
+            self._i_ob_rects.append(Rectangle(
+                AbsolutePosition(0.0, 0.0), AbsolutePosition(1.0, 0.0),
+                bg_color=color.TRANSPARENT, line_color=color.TRANSPARENT, line_width=1,
+            ))
+            self._i_ob_high.append(0.0)
+            self._i_ob_low.append(0.0)
+            self._i_ob_time.append(0.0)
+            self._i_ob_bias.append(0)
+            self._i_ob_active.append(False)
+
+            self._s_ob_rects.append(Rectangle(
+                AbsolutePosition(0.0, 0.0), AbsolutePosition(1.0, 0.0),
+                bg_color=color.TRANSPARENT, line_color=color.TRANSPARENT, line_width=1,
+            ))
+            self._s_ob_high.append(0.0)
+            self._s_ob_low.append(0.0)
+            self._s_ob_time.append(0.0)
+            self._s_ob_bias.append(0)
+            self._s_ob_active.append(False)
+            i = i + 1
+
+        j = 0
+        while j < _FVG_POOL:
+            self._fvg_top_rects.append(Rectangle(
+                AbsolutePosition(0.0, 0.0), AbsolutePosition(1.0, 0.0),
+                bg_color=color.TRANSPARENT, line_color=color.TRANSPARENT, line_width=1,
+            ))
+            self._fvg_bot_rects.append(Rectangle(
+                AbsolutePosition(0.0, 0.0), AbsolutePosition(1.0, 0.0),
+                bg_color=color.TRANSPARENT, line_color=color.TRANSPARENT, line_width=1,
+            ))
+            self._fvg_top.append(0.0)
+            self._fvg_bottom.append(0.0)
+            self._fvg_bias.append(0)
+            self._fvg_active.append(False)
+            j = j + 1
+
+    def _reset_history_state(self) -> None:
+        # Indie may reuse the instance on TF change without re-running __init__.
+        # Reset mutable pivot/pool state so drawings are rebuilt for the new series.
+        self._sh_level = nan
+        self._sh_last = nan
+        self._sh_crossed = False
+        self._sh_time = 0.0
+        self._sh_index = 0
+        self._sl_level = nan
+        self._sl_last = nan
+        self._sl_crossed = False
+        self._sl_time = 0.0
+        self._sl_index = 0
+        self._ih_level = nan
+        self._ih_last = nan
+        self._ih_crossed = False
+        self._ih_time = 0.0
+        self._ih_index = 0
+        self._il_level = nan
+        self._il_last = nan
+        self._il_crossed = False
+        self._il_time = 0.0
+        self._il_index = 0
+        self._eh_level = nan
+        self._eh_time = 0.0
+        self._eh_index = 0
+        self._el_level = nan
+        self._el_time = 0.0
+        self._el_index = 0
+        self._swing_bias = 0
+        self._internal_bias = 0
+        self._swing_leg = 0
+        self._internal_leg = 0
+        self._eq_leg = 0
+        self._trail_top = nan
+        self._trail_bottom = nan
+        self._trail_bar_time = 0.0
+        self._trail_bar_index = 0
+        self._trail_top_time = 0.0
+        self._trail_bottom_time = 0.0
+        self._fvg_cum_abs = 0.0
+        self._struct_head = 0
+        self._eq_head = 0
+        self._swing_lbl_head = 0
+        self._i_ob_head = 0
+        self._s_ob_head = 0
+        self._fvg_head = 0
+        i = 0
+        while i < _STRUCT_POOL:
+            self._struct_filled[i] = False
+            i = i + 1
+        i = 0
+        while i < _EQHL_POOL:
+            self._eq_filled[i] = False
+            i = i + 1
+        i = 0
+        while i < _SWING_LBL_POOL:
+            self._swing_filled[i] = False
+            i = i + 1
+        i = 0
+        while i < _OB_POOL:
+            self._i_ob_active[i] = False
+            self._s_ob_active[i] = False
+            i = i + 1
+        i = 0
+        while i < _FVG_POOL:
+            self._fvg_active[i] = False
+            i = i + 1
+
+    def _bar_duration(self) -> float:
+        if self.bar_index > 0:
+            dur = self.time[0] - self.time[1]
+            if dur > 0.0:
+                return dur
+        return _BAR_DUR_FALLBACK
+
+    def _extend_time(self) -> float:
+        return self.time[0] + _LINE_EXTEND_BARS * self._bar_duration()
+
+    def _update_leg(
+        self,
+        size: int,
+        leg_value: int,
+        highest: float,
+        lowest: float,
+    ) -> tuple[int, bool, bool, bool]:
+        '''Returns (new_leg, new_pivot, pivot_low, pivot_high).'''
+        if self.bar_index < size or isnan(highest) or isnan(lowest):
+            return leg_value, False, False, False
+
+        new_leg = leg_value
+        if self.high[size] > highest:
+            new_leg = BEARISH_LEG
+        elif self.low[size] < lowest:
+            new_leg = BULLISH_LEG
+
+        changed = new_leg != leg_value
+        pivot_low = changed and new_leg == BULLISH_LEG
+        pivot_high = changed and new_leg == BEARISH_LEG
+        return new_leg, changed, pivot_low, pivot_high
+
+    def _draw_structure(
+        self,
+        level: float,
+        start_time: float,
+        tag: str,
+        structure_color: Color,
+        dashed: bool,
+        font_sz: int,
+        label_below: bool,
+    ) -> None:
+        pool_n = self._max_structure
+        if pool_n > _STRUCT_POOL:
+            pool_n = _STRUCT_POOL
+        if pool_n < 1:
+            pool_n = 1
+        slot = self._struct_head % pool_n
+        style = line_style.DASHED if dashed else line_style.SOLID
+        line = self._struct_lines[slot]
+        line.point_a = AbsolutePosition(start_time, level)
+        line.point_b = AbsolutePosition(self.time[0], level)
+        line.color = structure_color
+        line.line_style = style
+        mid_time = (start_time + self.time[0]) * 0.5
+        _ = label_below
+        lbl = self._struct_labels[slot]
+        lbl.text = tag
+        lbl.position = AbsolutePosition(mid_time, level)
+        lbl.font_size = font_sz
+        lbl.text_color = structure_color
+        self._struct_filled[slot] = True
+        self._struct_head = self._struct_head + 1
+        # No chart.draw here — Indie caps 100 drawing changes/bar; flush on is_last_bar only
+
+    def _draw_eqhl(
+        self,
+        tag: str,
+        t0: float,
+        p0: float,
+        t1: float,
+        p1: float,
+        eq_color: Color,
+        font_sz: int,
+        label_below: bool,
+    ) -> None:
+        _ = label_below
+        slot = self._eq_head % _EQHL_POOL
+        line = self._eq_lines[slot]
+        line.point_a = AbsolutePosition(t0, p0)
+        line.point_b = AbsolutePosition(t1, p1)
+        line.color = eq_color
+        mid_t = (t0 + t1) * 0.5
+        lbl = self._eq_labels[slot]
+        lbl.text = tag
+        lbl.position = AbsolutePosition(mid_t, p1)
+        lbl.font_size = font_sz
+        lbl.text_color = eq_color
+        self._eq_filled[slot] = True
+        self._eq_head = self._eq_head + 1
+
+    def _draw_swing_point(
+        self,
+        tag: str,
+        t0: float,
+        price: float,
+        lbl_color: Color,
+        label_below: bool,
+    ) -> None:
+        _ = label_below
+        slot = self._swing_lbl_head % _SWING_LBL_POOL
+        lbl = self._swing_lbls[slot]
+        lbl.text = tag
+        lbl.position = AbsolutePosition(t0, price)
+        lbl.text_color = lbl_color
+        self._swing_filled[slot] = True
+        self._swing_lbl_head = self._swing_lbl_head + 1
+
+    def _flush_structure_pools(self) -> None:
+        # Redraw only filled slots (stay under Indie 100-changes/bar limit)
+        pool_n = self._max_structure
+        if pool_n > _STRUCT_POOL:
+            pool_n = _STRUCT_POOL
+        if pool_n < 1:
+            pool_n = 1
+        i = 0
+        while i < pool_n:
+            if self._struct_filled[i]:
+                self.chart.draw(self._struct_lines[i])
+                self.chart.draw(self._struct_labels[i])
+            i = i + 1
+        i = 0
+        while i < _EQHL_POOL:
+            if self._eq_filled[i]:
+                self.chart.draw(self._eq_lines[i])
+                self.chart.draw(self._eq_labels[i])
+            i = i + 1
+        i = 0
+        while i < _SWING_LBL_POOL:
+            if self._swing_filled[i]:
+                self.chart.draw(self._swing_lbls[i])
+            i = i + 1
+
+    def _flush_fvg_pool(self, bull_c: Color, bear_c: Color) -> None:
+        _ = bull_c
+        _ = bear_c
+        i = 0
+        while i < _FVG_POOL:
+            if self._fvg_active[i]:
+                self.chart.draw(self._fvg_top_rects[i])
+                self.chart.draw(self._fvg_bot_rects[i])
+            i = i + 1
+
+    def _should_show_tag(self, filter_mode: str, tag: str) -> bool:
+        if filter_mode == 'All':
+            return True
+        if filter_mode == 'BOS' and tag == 'BOS':
+            return True
+        if filter_mode == 'CHoCH' and tag == 'CHoCH':
+            return True
+        return False
+
+    def _store_order_block(
+        self,
+        pivot_index: int,
+        bias: int,
+        internal: bool,
+        parsed_high: MutSeriesF,
+        parsed_low: MutSeriesF,
+    ) -> None:
+        if pivot_index < 0 or pivot_index > self.bar_index:
+            return
+        offset_start = self.bar_index - pivot_index
+        if offset_start < 0:
+            return
+        if offset_start > _OB_LOOKBACK:
+            offset_start = _OB_LOOKBACK
+
+        best_offset = 0
+        best_val = 0.0
+        i = 0
+        if bias == BEARISH:
+            best_val = parsed_high[0]
+            while i <= offset_start:
+                v = parsed_high[i]
+                if not isnan(v):
+                    if isnan(best_val) or v >= best_val:
+                        best_val = v
+                        best_offset = i
+                i = i + 1
+        else:
+            best_val = parsed_low[0]
+            while i <= offset_start:
+                v = parsed_low[i]
+                if not isnan(v):
+                    if isnan(best_val) or v <= best_val:
+                        best_val = v
+                        best_offset = i
+                i = i + 1
+
+        ob_high = parsed_high[best_offset]
+        ob_low = parsed_low[best_offset]
+        ob_time = self.time[best_offset]
+        if isnan(ob_high) or isnan(ob_low):
+            return
+
+        slot = 0
+        if internal:
+            slot = self._i_ob_head % _OB_POOL
+            self._i_ob_high[slot] = ob_high
+            self._i_ob_low[slot] = ob_low
+            self._i_ob_time[slot] = ob_time
+            self._i_ob_bias[slot] = bias
+            self._i_ob_active[slot] = True
+            self._i_ob_head = self._i_ob_head + 1
+        else:
+            slot = self._s_ob_head % _OB_POOL
+            self._s_ob_high[slot] = ob_high
+            self._s_ob_low[slot] = ob_low
+            self._s_ob_time[slot] = ob_time
+            self._s_ob_bias[slot] = bias
+            self._s_ob_active[slot] = True
+            self._s_ob_head = self._s_ob_head + 1
+
+    def _mitigate_order_blocks(self, internal: bool, use_close: bool) -> None:
+        bear_src = self.close[0] if use_close else self.high[0]
+        bull_src = self.close[0] if use_close else self.low[0]
+        i = 0
+        if internal:
+            while i < _OB_POOL:
+                if self._i_ob_active[i]:
+                    bias = self._i_ob_bias[i]
+                    hi = self._i_ob_high[i]
+                    lo = self._i_ob_low[i]
+                    crossed = False
+                    if bias == BEARISH and bear_src > hi:
+                        crossed = True
+                    if bias == BULLISH and bull_src < lo:
+                        crossed = True
+                    if crossed:
+                        self._i_ob_active[i] = False
+                i = i + 1
+        else:
+            while i < _OB_POOL:
+                if self._s_ob_active[i]:
+                    bias = self._s_ob_bias[i]
+                    hi = self._s_ob_high[i]
+                    lo = self._s_ob_low[i]
+                    crossed = False
+                    if bias == BEARISH and bear_src > hi:
+                        crossed = True
+                    if bias == BULLISH and bull_src < lo:
+                        crossed = True
+                    if crossed:
+                        self._s_ob_active[i] = False
+                i = i + 1
+
+    def _draw_order_blocks(
+        self,
+        internal: bool,
+        max_count: int,
+        style_mode: str,
+        bull_color: Color,
+        bear_color: Color,
+    ) -> None:
+        # Only draw active OBs — drawing every pool slot blows past Indie 100/bar limit
+        limit = max_count
+        if limit > _OB_POOL:
+            limit = _OB_POOL
+        drawn = 0
+        k = 0
+        if internal:
+            head = self._i_ob_head
+            while k < _OB_POOL and drawn < limit:
+                slot = (head - 1 - k) % _OB_POOL
+                if slot < 0:
+                    slot = slot + _OB_POOL
+                if self._i_ob_active[slot]:
+                    rect = self._i_ob_rects[slot]
+                    bias = self._i_ob_bias[slot]
+                    hi = self._i_ob_high[slot]
+                    lo = self._i_ob_low[slot]
+                    t0 = self._i_ob_time[slot]
+                    mono = style_mode == 'Monochrome'
+                    c_bull = rgba(178, 181, 190, 0.20) if mono else bull_color
+                    c_bear = rgba(93, 96, 107, 0.20) if mono else bear_color
+                    c = c_bull if bias == BULLISH else c_bear
+                    rect.point_a = AbsolutePosition(t0, hi)
+                    rect.point_b = AbsolutePosition(self.time[0], lo)
+                    rect.bg_color = c
+                    rect.line_color = color.TRANSPARENT
+                    self.chart.draw(rect)
+                    drawn = drawn + 1
+                k = k + 1
+        else:
+            head = self._s_ob_head
+            while k < _OB_POOL and drawn < limit:
+                slot = (head - 1 - k) % _OB_POOL
+                if slot < 0:
+                    slot = slot + _OB_POOL
+                if self._s_ob_active[slot]:
+                    rect = self._s_ob_rects[slot]
+                    bias = self._s_ob_bias[slot]
+                    hi = self._s_ob_high[slot]
+                    lo = self._s_ob_low[slot]
+                    t0 = self._s_ob_time[slot]
+                    mono = style_mode == 'Monochrome'
+                    c_bull = rgba(178, 181, 190, 0.20) if mono else bull_color
+                    c_bear = rgba(93, 96, 107, 0.20) if mono else bear_color
+                    c = c_bull if bias == BULLISH else c_bear
+                    rect.point_a = AbsolutePosition(t0, hi)
+                    rect.point_b = AbsolutePosition(self.time[0], lo)
+                    rect.bg_color = c
+                    rect.line_color = c
+                    self.chart.draw(rect)
+                    drawn = drawn + 1
+                k = k + 1
+
+    def calc(
+        self,
+        style_mode: str,
+        max_structure: int,
+        show_internal: bool,
+        internal_bull: str,
+        internal_bull_color: Color,
+        internal_bear: str,
+        internal_bear_color: Color,
+        internal_confluence: bool,
+        internal_label_size: str,
+        show_swing: bool,
+        swing_bull: str,
+        swing_bull_color: Color,
+        swing_bear: str,
+        swing_bear_color: Color,
+        swing_label_size: str,
+        show_swing_points: bool,
+        swings_length: int,
+        show_strong_weak: bool,
+        show_internal_ob: bool,
+        internal_ob_count: int,
+        show_swing_ob: bool,
+        swing_ob_count: int,
+        ob_filter: str,
+        ob_mitigation: str,
+        internal_bull_ob_color: Color,
+        internal_bear_ob_color: Color,
+        swing_bull_ob_color: Color,
+        swing_bear_ob_color: Color,
+        show_eqhl: bool,
+        eqhl_length: int,
+        eqhl_threshold: float,
+        eqhl_label_size: str,
+        show_fvg: bool,
+        fvg_auto_threshold: bool,
+        fvg_timeframe: TimeFrame,
+        fvg_bull_color: Color,
+        fvg_bear_color: Color,
+        fvg_extend: int,
+        show_daily: bool,
+        daily_style: str,
+        daily_color: Color,
+        show_weekly: bool,
+        weekly_style: str,
+        weekly_color: Color,
+        show_monthly: bool,
+        monthly_style: str,
+        monthly_color: Color,
+        show_zones: bool,
+        premium_color: Color,
+        equilibrium_color: Color,
+        discount_color: Color,
+    ) -> float:
+        # TF/reload starts at bar 0 without always re-running __init__
+        if self.bar_index == 0:
+            self._reset_history_state()
+
+        self._max_structure = max_structure
+
+        # Resolve theme colors
+        swing_bull_c = MONO_BULLISH if style_mode == 'Monochrome' else swing_bull_color
+        swing_bear_c = MONO_BEARISH if style_mode == 'Monochrome' else swing_bear_color
+        internal_bull_c = MONO_BULLISH if style_mode == 'Monochrome' else internal_bull_color
+        internal_bear_c = MONO_BEARISH if style_mode == 'Monochrome' else internal_bear_color
+        fvg_bull_c = rgba(178, 181, 190, 0.30) if style_mode == 'Monochrome' else fvg_bull_color
+        fvg_bear_c = rgba(93, 96, 107, 0.30) if style_mode == 'Monochrome' else fvg_bear_color
+        premium_c = rgba(93, 96, 107, 0.20) if style_mode == 'Monochrome' else premium_color
+        discount_c = rgba(178, 181, 190, 0.20) if style_mode == 'Monochrome' else discount_color
+        _ = fvg_timeframe
+
+        need_ob = show_internal_ob or show_swing_ob
+        need_swing = show_swing or show_swing_ob or show_strong_weak or show_zones
+        need_internal = show_internal or show_internal_ob
+        need_atr = show_eqhl or need_ob
+
+        atr200 = nan
+        if need_atr:
+            atr200 = Atr.new(_ATR_LEN)[0]
+
+        parsed_h_val = self.high[0]
+        parsed_l_val = self.low[0]
+        if need_ob:
+            volatility = atr200
+            if ob_filter != 'Atr':
+                tr_series = Tr.new()
+                cum_tr = CumSum.new(tr_series)[0]
+                if self.bar_index > 0:
+                    volatility = cum_tr / float(self.bar_index)
+                else:
+                    volatility = atr200
+            high_vol = False
+            if not isnan(volatility):
+                high_vol = (self.high[0] - self.low[0]) >= (2.0 * volatility)
+            if high_vol:
+                parsed_h_val = self.low[0]
+                parsed_l_val = self.high[0]
+        parsed_high = MutSeriesF.new(parsed_h_val)
+        parsed_low = MutSeriesF.new(parsed_l_val)
+
+        use_close_mitigation = ob_mitigation == 'Close'
+        internal_font = _font_size(internal_label_size)
+        swing_font = _font_size(swing_label_size)
+        eq_font = _font_size(eqhl_label_size)
+
+        # ── Swing structure pivots ────────────────────────────────────────────
+        if need_swing:
+            swing_hi = Highest.new(self.high, swings_length)[0]
+            swing_lo = Lowest.new(self.low, swings_length)[0]
+            self._swing_leg, swing_new, swing_pl, swing_ph = self._update_leg(
+                swings_length, self._swing_leg, swing_hi, swing_lo,
+            )
+            if swing_new:
+                if swing_pl:
+                    lvl = self.low[swings_length]
+                    if show_swing_points and not isnan(self._sl_level):
+                        tag = 'LL' if lvl < self._sl_level else 'HL'
+                        self._draw_swing_point(
+                            tag, self.time[swings_length], lvl, swing_bull_c, False,
+                        )
+                    self._sl_last = self._sl_level
+                    self._sl_level = lvl
+                    self._sl_crossed = False
+                    self._sl_time = self.time[swings_length]
+                    self._sl_index = self.bar_index - swings_length
+                    self._trail_bottom = lvl
+                    self._trail_bar_time = self._sl_time
+                    self._trail_bar_index = self._sl_index
+                    self._trail_bottom_time = self._sl_time
+                elif swing_ph:
+                    lvl = self.high[swings_length]
+                    if show_swing_points and not isnan(self._sh_level):
+                        tag = 'HH' if lvl > self._sh_level else 'LH'
+                        self._draw_swing_point(
+                            tag, self.time[swings_length], lvl, swing_bear_c, True,
+                        )
+                    self._sh_last = self._sh_level
+                    self._sh_level = lvl
+                    self._sh_crossed = False
+                    self._sh_time = self.time[swings_length]
+                    self._sh_index = self.bar_index - swings_length
+                    self._trail_top = lvl
+                    self._trail_bar_time = self._sh_time
+                    self._trail_bar_index = self._sh_index
+                    self._trail_top_time = self._sh_time
+
+        # ── Internal structure pivots (size=5) ────────────────────────────────
+        if need_internal:
+            int_hi = Highest.new(self.high, 5)[0]
+            int_lo = Lowest.new(self.low, 5)[0]
+            self._internal_leg, int_new, int_pl, int_ph = self._update_leg(
+                5, self._internal_leg, int_hi, int_lo,
+            )
+            if int_new:
+                if int_pl:
+                    self._il_last = self._il_level
+                    self._il_level = self.low[5]
+                    self._il_crossed = False
+                    self._il_time = self.time[5]
+                    self._il_index = self.bar_index - 5
+                elif int_ph:
+                    self._ih_last = self._ih_level
+                    self._ih_level = self.high[5]
+                    self._ih_crossed = False
+                    self._ih_time = self.time[5]
+                    self._ih_index = self.bar_index - 5
+
+        # ── Equal highs / lows ────────────────────────────────────────────────
+        if show_eqhl:
+            eq_hi = Highest.new(self.high, eqhl_length)[0]
+            eq_lo = Lowest.new(self.low, eqhl_length)[0]
+            self._eq_leg, eq_new, eq_pl, eq_ph = self._update_leg(
+                eqhl_length, self._eq_leg, eq_hi, eq_lo,
+            )
+            if eq_new:
+                if eq_pl:
+                    lvl = self.low[eqhl_length]
+                    if (
+                        not isnan(self._el_level)
+                        and not isnan(atr200)
+                        and abs(self._el_level - lvl) < eqhl_threshold * atr200
+                    ):
+                        self._draw_eqhl(
+                            'EQL', self._el_time, self._el_level,
+                            self.time[eqhl_length], lvl, swing_bull_c, eq_font, False,
+                        )
+                    self._el_level = lvl
+                    self._el_time = self.time[eqhl_length]
+                    self._el_index = self.bar_index - eqhl_length
+                elif eq_ph:
+                    lvl = self.high[eqhl_length]
+                    if (
+                        not isnan(self._eh_level)
+                        and not isnan(atr200)
+                        and abs(self._eh_level - lvl) < eqhl_threshold * atr200
+                    ):
+                        self._draw_eqhl(
+                            'EQH', self._eh_time, self._eh_level,
+                            self.time[eqhl_length], lvl, swing_bear_c, eq_font, True,
+                        )
+                    self._eh_level = lvl
+                    self._eh_time = self.time[eqhl_length]
+                    self._eh_index = self.bar_index - eqhl_length
+
+        # ── Structure breaks (internal) ───────────────────────────────────────
+        bullish_bar = True
+        bearish_bar = True
+        if internal_confluence:
+            # Exact LuxAlgo confluence formula (kept for behavioral parity)
+            upper = self.high[0] - max(self.close[0], self.open[0])
+            lower_cmp = min(self.close[0], self.open[0] - self.low[0])
+            bullish_bar = upper > lower_cmp
+            bearish_bar = upper < lower_cmp
+
+        if show_internal or show_internal_ob:
+            if (
+                not isnan(self._ih_level)
+                and not self._ih_crossed
+                and self.close[1] <= self._ih_level
+                and self.close[0] > self._ih_level
+                and self._ih_level != self._sh_level
+                and bullish_bar
+            ):
+                tag = 'CHoCH' if self._internal_bias == BEARISH else 'BOS'
+                self._ih_crossed = True
+                self._internal_bias = BULLISH
+                if show_internal and self._should_show_tag(internal_bull, tag):
+                    self._draw_structure(
+                        self._ih_level, self._ih_time, tag, internal_bull_c,
+                        True, internal_font, True,
+                    )
+                if show_internal_ob:
+                    self._store_order_block(
+                        self._ih_index, BULLISH, True, parsed_high, parsed_low,
+                    )
+
+            if (
+                not isnan(self._il_level)
+                and not self._il_crossed
+                and self.close[1] >= self._il_level
+                and self.close[0] < self._il_level
+                and self._il_level != self._sl_level
+                and bearish_bar
+            ):
+                tag = 'CHoCH' if self._internal_bias == BULLISH else 'BOS'
+                self._il_crossed = True
+                self._internal_bias = BEARISH
+                if show_internal and self._should_show_tag(internal_bear, tag):
+                    self._draw_structure(
+                        self._il_level, self._il_time, tag, internal_bear_c,
+                        True, internal_font, False,
+                    )
+                if show_internal_ob:
+                    self._store_order_block(
+                        self._il_index, BEARISH, True, parsed_high, parsed_low,
+                    )
+
+        # ── Structure breaks (swing) ──────────────────────────────────────────
+        if show_swing or show_swing_ob or show_strong_weak:
+            if (
+                not isnan(self._sh_level)
+                and not self._sh_crossed
+                and self.close[1] <= self._sh_level
+                and self.close[0] > self._sh_level
+            ):
+                tag = 'CHoCH' if self._swing_bias == BEARISH else 'BOS'
+                self._sh_crossed = True
+                self._swing_bias = BULLISH
+                if show_swing and self._should_show_tag(swing_bull, tag):
+                    self._draw_structure(
+                        self._sh_level, self._sh_time, tag, swing_bull_c,
+                        False, swing_font, True,
+                    )
+                if show_swing_ob:
+                    self._store_order_block(
+                        self._sh_index, BULLISH, False, parsed_high, parsed_low,
+                    )
+
+            if (
+                not isnan(self._sl_level)
+                and not self._sl_crossed
+                and self.close[1] >= self._sl_level
+                and self.close[0] < self._sl_level
+            ):
+                tag = 'CHoCH' if self._swing_bias == BULLISH else 'BOS'
+                self._sl_crossed = True
+                self._swing_bias = BEARISH
+                if show_swing and self._should_show_tag(swing_bear, tag):
+                    self._draw_structure(
+                        self._sl_level, self._sl_time, tag, swing_bear_c,
+                        False, swing_font, False,
+                    )
+                if show_swing_ob:
+                    self._store_order_block(
+                        self._sl_index, BEARISH, False, parsed_high, parsed_low,
+                    )
+
+        # ── Order block mitigation ────────────────────────────────────────────
+        if show_internal_ob:
+            self._mitigate_order_blocks(True, use_close_mitigation)
+        if show_swing_ob:
+            self._mitigate_order_blocks(False, use_close_mitigation)
+
+        # ── Fair Value Gaps ───────────────────────────────────────────────────
+        if show_fvg and self._use_fvg:
+            # Mitigate existing (state only — redraw on last bar)
+            i = 0
+            while i < _FVG_POOL:
+                if self._fvg_active[i]:
+                    filled = False
+                    if self._fvg_bias[i] == BULLISH and self.low[0] < self._fvg_bottom[i]:
+                        filled = True
+                    if self._fvg_bias[i] == BEARISH and self.high[0] > self._fvg_top[i]:
+                        filled = True
+                    if filled:
+                        self._fvg_active[i] = False
+                i = i + 1
+
+            last_close = self._fvg_last_close[0]
+            last_open = self._fvg_last_open[0]
+            last_time = self._fvg_last_time[0]
+            cur_high = self._fvg_cur_high[0]
+            cur_low = self._fvg_cur_low[0]
+            cur_time = self._fvg_cur_time[0]
+            last2_high = self._fvg_last2_high[0]
+            last2_low = self._fvg_last2_low[0]
+
+            new_tf = False
+            if self.bar_index > 0 and not isnan(cur_time) and not isnan(self._fvg_cur_time[1]):
+                new_tf = cur_time != self._fvg_cur_time[1]
+
+            bar_delta_pct = 0.0
+            if not isnan(last_open) and last_open != 0.0 and not isnan(last_close):
+                bar_delta_pct = (last_close - last_open) / (last_open * 100.0)
+
+            if new_tf:
+                self._fvg_cum_abs = self._fvg_cum_abs + abs(bar_delta_pct)
+
+            threshold = 0.0
+            if fvg_auto_threshold and self.bar_index > 0:
+                threshold = (self._fvg_cum_abs / float(self.bar_index)) * 2.0
+
+            extend_sec = float(fvg_extend) * self._bar_duration()
+            right_t = cur_time + extend_sec
+
+            bull_fvg = (
+                new_tf
+                and not isnan(cur_low)
+                and not isnan(last2_high)
+                and not isnan(last_close)
+                and cur_low > last2_high
+                and last_close > last2_high
+                and bar_delta_pct > threshold
+            )
+            bear_fvg = (
+                new_tf
+                and not isnan(cur_high)
+                and not isnan(last2_low)
+                and not isnan(last_close)
+                and cur_high < last2_low
+                and last_close < last2_low
+                and (-bar_delta_pct) > threshold
+            )
+
+            if bull_fvg:
+                mid = (cur_low + last2_high) * 0.5
+                slot = self._fvg_head % _FVG_POOL
+                top_r = self._fvg_top_rects[slot]
+                bot_r = self._fvg_bot_rects[slot]
+                top_r.point_a = AbsolutePosition(last_time, cur_low)
+                top_r.point_b = AbsolutePosition(right_t, mid)
+                top_r.bg_color = fvg_bull_c
+                top_r.line_color = fvg_bull_c
+                bot_r.point_a = AbsolutePosition(last_time, mid)
+                bot_r.point_b = AbsolutePosition(right_t, last2_high)
+                bot_r.bg_color = fvg_bull_c
+                bot_r.line_color = fvg_bull_c
+                self._fvg_top[slot] = cur_low
+                self._fvg_bottom[slot] = last2_high
+                self._fvg_bias[slot] = BULLISH
+                self._fvg_active[slot] = True
+                self._fvg_head = self._fvg_head + 1
+
+            if bear_fvg:
+                mid = (cur_high + last2_low) * 0.5
+                slot = self._fvg_head % _FVG_POOL
+                top_r = self._fvg_top_rects[slot]
+                bot_r = self._fvg_bot_rects[slot]
+                top_r.point_a = AbsolutePosition(last_time, cur_high)
+                top_r.point_b = AbsolutePosition(right_t, mid)
+                top_r.bg_color = fvg_bear_c
+                top_r.line_color = fvg_bear_c
+                bot_r.point_a = AbsolutePosition(last_time, mid)
+                bot_r.point_b = AbsolutePosition(right_t, last2_low)
+                bot_r.bg_color = fvg_bear_c
+                bot_r.line_color = fvg_bear_c
+                self._fvg_top[slot] = cur_high
+                self._fvg_bottom[slot] = last2_low
+                self._fvg_bias[slot] = BEARISH
+                self._fvg_active[slot] = True
+                self._fvg_head = self._fvg_head + 1
+
+        # ── Trailing extremes ─────────────────────────────────────────────────
+        if show_strong_weak or show_zones:
+            if not isnan(self._trail_top):
+                if self.high[0] >= self._trail_top:
+                    self._trail_top = self.high[0]
+                    self._trail_top_time = self.time[0]
+            elif not isnan(self._sh_level):
+                self._trail_top = self._sh_level
+                self._trail_top_time = self._sh_time
+
+            if not isnan(self._trail_bottom):
+                if self.low[0] <= self._trail_bottom:
+                    self._trail_bottom = self.low[0]
+                    self._trail_bottom_time = self.time[0]
+            elif not isnan(self._sl_level):
+                self._trail_bottom = self._sl_level
+                self._trail_bottom_time = self._sl_time
+
+        # Last-bar: always redraw pools (Indie drops drawings not redrawn on zoom/ticks)
+        if self.is_last_bar:
+            self._flush_structure_pools()
+            if show_fvg and self._use_fvg:
+                self._flush_fvg_pool(fvg_bull_c, fvg_bear_c)
+
+            if show_internal_ob:
+                self._draw_order_blocks(
+                    True, internal_ob_count, style_mode,
+                    internal_bull_ob_color, internal_bear_ob_color,
+                )
+            if show_swing_ob:
+                self._draw_order_blocks(
+                    False, swing_ob_count, style_mode,
+                    swing_bull_ob_color, swing_bear_ob_color,
+                )
+
+            right_t = self._extend_time()
+
+            if show_strong_weak and not isnan(self._trail_top) and not isnan(self._trail_bottom):
+                top_txt = 'Strong High' if self._swing_bias == BEARISH else 'Weak High'
+                bot_txt = 'Strong Low' if self._swing_bias == BULLISH else 'Weak Low'
+
+                self._hl_top_line.point_a = AbsolutePosition(self._trail_top_time, self._trail_top)
+                self._hl_top_line.point_b = AbsolutePosition(right_t, self._trail_top)
+                self._hl_top_line.color = swing_bear_c
+                self.chart.draw(self._hl_top_line)
+                self._hl_top_lbl.text = top_txt
+                self._hl_top_lbl.position = AbsolutePosition(right_t, self._trail_top)
+                self._hl_top_lbl.text_color = swing_bear_c
+                self.chart.draw(self._hl_top_lbl)
+
+                self._hl_bot_line.point_a = AbsolutePosition(self._trail_bottom_time, self._trail_bottom)
+                self._hl_bot_line.point_b = AbsolutePosition(right_t, self._trail_bottom)
+                self._hl_bot_line.color = swing_bull_c
+                self.chart.draw(self._hl_bot_line)
+                self._hl_bot_lbl.text = bot_txt
+                self._hl_bot_lbl.position = AbsolutePosition(right_t, self._trail_bottom)
+                self._hl_bot_lbl.text_color = swing_bull_c
+                self.chart.draw(self._hl_bot_lbl)
+
+            if show_zones and not isnan(self._trail_top) and not isnan(self._trail_bottom):
+                left_t = self._trail_bar_time if self._trail_bar_time > 0.0 else self.time[0]
+                prem_bot = 0.95 * self._trail_top + 0.05 * self._trail_bottom
+                disc_top = 0.95 * self._trail_bottom + 0.05 * self._trail_top
+                eq_top = 0.525 * self._trail_top + 0.475 * self._trail_bottom
+                eq_bot = 0.525 * self._trail_bottom + 0.475 * self._trail_top
+                eq_mid = (self._trail_top + self._trail_bottom) * 0.5
+
+                self._zone_premium.point_a = AbsolutePosition(left_t, self._trail_top)
+                self._zone_premium.point_b = AbsolutePosition(self.time[0], prem_bot)
+                self._zone_premium.bg_color = premium_c
+                self._zone_premium.line_color = color.TRANSPARENT
+                self.chart.draw(self._zone_premium)
+                self._zone_premium_lbl.position = AbsolutePosition(
+                    (left_t + self.time[0]) * 0.5, self._trail_top,
+                )
+                self._zone_premium_lbl.text_color = premium_c
+                self.chart.draw(self._zone_premium_lbl)
+
+                self._zone_eq.point_a = AbsolutePosition(left_t, eq_top)
+                self._zone_eq.point_b = AbsolutePosition(self.time[0], eq_bot)
+                self._zone_eq.bg_color = equilibrium_color
+                self._zone_eq.line_color = color.TRANSPARENT
+                self.chart.draw(self._zone_eq)
+                self._zone_eq_lbl.position = AbsolutePosition(self.time[0], eq_mid)
+                self._zone_eq_lbl.text_color = equilibrium_color
+                self.chart.draw(self._zone_eq_lbl)
+
+                self._zone_discount.point_a = AbsolutePosition(left_t, disc_top)
+                self._zone_discount.point_b = AbsolutePosition(self.time[0], self._trail_bottom)
+                self._zone_discount.bg_color = discount_c
+                self._zone_discount.line_color = color.TRANSPARENT
+                self.chart.draw(self._zone_discount)
+                self._zone_discount_lbl.position = AbsolutePosition(
+                    (left_t + self.time[0]) * 0.5, self._trail_bottom,
+                )
+                self._zone_discount_lbl.text_color = discount_c
+                self.chart.draw(self._zone_discount_lbl)
+
+            # MTF levels
+            tf_d = TimeFrame.from_str('1D')
+            tf_w = TimeFrame.from_str('1W')
+            tf_m = TimeFrame.from_str('1M')
+
+            if show_daily and self._use_daily and not (self.time_frame > tf_d):
+                same_tf = self.time_frame == tf_d
+                top = self.high[0] if same_tf else self._d_high[0]
+                bot = self.low[0] if same_tf else self._d_low[0]
+                if not isnan(top) and not isnan(bot):
+                    ls = line_style.DASHED if daily_style == 'Dashed' else line_style.DOTTED if daily_style == 'Dotted' else line_style.SOLID
+                    self._d_top_line.point_a = AbsolutePosition(self.time[0], top)
+                    self._d_top_line.point_b = AbsolutePosition(right_t, top)
+                    self._d_top_line.color = daily_color
+                    self._d_top_line.line_style = ls
+                    self.chart.draw(self._d_top_line)
+                    self._d_top_lbl.position = AbsolutePosition(right_t, top)
+                    self._d_top_lbl.text_color = daily_color
+                    self.chart.draw(self._d_top_lbl)
+
+                    self._d_bot_line.point_a = AbsolutePosition(self.time[0], bot)
+                    self._d_bot_line.point_b = AbsolutePosition(right_t, bot)
+                    self._d_bot_line.color = daily_color
+                    self._d_bot_line.line_style = ls
+                    self.chart.draw(self._d_bot_line)
+                    self._d_bot_lbl.position = AbsolutePosition(right_t, bot)
+                    self._d_bot_lbl.text_color = daily_color
+                    self.chart.draw(self._d_bot_lbl)
+
+            if show_weekly and self._use_weekly and not (self.time_frame > tf_w):
+                same_tf = self.time_frame == tf_w
+                top = self.high[0] if same_tf else self._w_high[0]
+                bot = self.low[0] if same_tf else self._w_low[0]
+                if not isnan(top) and not isnan(bot):
+                    ls = line_style.DASHED if weekly_style == 'Dashed' else line_style.DOTTED if weekly_style == 'Dotted' else line_style.SOLID
+                    self._w_top_line.point_a = AbsolutePosition(self.time[0], top)
+                    self._w_top_line.point_b = AbsolutePosition(right_t, top)
+                    self._w_top_line.color = weekly_color
+                    self._w_top_line.line_style = ls
+                    self.chart.draw(self._w_top_line)
+                    self._w_top_lbl.position = AbsolutePosition(right_t, top)
+                    self._w_top_lbl.text_color = weekly_color
+                    self.chart.draw(self._w_top_lbl)
+
+                    self._w_bot_line.point_a = AbsolutePosition(self.time[0], bot)
+                    self._w_bot_line.point_b = AbsolutePosition(right_t, bot)
+                    self._w_bot_line.color = weekly_color
+                    self._w_bot_line.line_style = ls
+                    self.chart.draw(self._w_bot_line)
+                    self._w_bot_lbl.position = AbsolutePosition(right_t, bot)
+                    self._w_bot_lbl.text_color = weekly_color
+                    self.chart.draw(self._w_bot_lbl)
+
+            if show_monthly and self._use_monthly and not (self.time_frame > tf_m):
+                same_tf = self.time_frame == tf_m
+                top = self.high[0] if same_tf else self._m_high[0]
+                bot = self.low[0] if same_tf else self._m_low[0]
+                if not isnan(top) and not isnan(bot):
+                    ls = line_style.DASHED if monthly_style == 'Dashed' else line_style.DOTTED if monthly_style == 'Dotted' else line_style.SOLID
+                    self._m_top_line.point_a = AbsolutePosition(self.time[0], top)
+                    self._m_top_line.point_b = AbsolutePosition(right_t, top)
+                    self._m_top_line.color = monthly_color
+                    self._m_top_line.line_style = ls
+                    self.chart.draw(self._m_top_line)
+                    self._m_top_lbl.position = AbsolutePosition(right_t, top)
+                    self._m_top_lbl.text_color = monthly_color
+                    self.chart.draw(self._m_top_lbl)
+
+                    self._m_bot_line.point_a = AbsolutePosition(self.time[0], bot)
+                    self._m_bot_line.point_b = AbsolutePosition(right_t, bot)
+                    self._m_bot_line.color = monthly_color
+                    self._m_bot_line.line_style = ls
+                    self.chart.draw(self._m_bot_line)
+                    self._m_bot_lbl.position = AbsolutePosition(right_t, bot)
+                    self._m_bot_lbl.text_color = monthly_color
+                    self.chart.draw(self._m_bot_lbl)
+
+        # Always return nan — never plot a real price (keeps candle scale + colors intact)
+        return nan
