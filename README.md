@@ -1,6 +1,6 @@
 # Smart Money Concepts
 
-[![Version](https://img.shields.io/badge/version-1.0.0-blue.svg)](CHANGELOG.md)
+[![Version](https://img.shields.io/badge/version-1.0.1-blue.svg)](CHANGELOG.md)
 [![Indie](https://img.shields.io/badge/Indie-v5-green.svg)](https://takeprofit.com/docs/indie)
 [![Platform](https://img.shields.io/badge/Exness-TakeProfit-orange.svg)](https://get.exness.help/hc/en-us/articles/27261267831068-Custom-indicators-in-Exness-Terminal)
 [![License](https://img.shields.io/badge/license-MIT-lightgrey.svg)](LICENSE)
@@ -10,7 +10,7 @@ Port logika SMC murni — tanpa branding pihak ketiga.
 
 | | |
 |---|---|
-| **Versi** | `1.0.0` |
+| **Versi** | `1.0.1` |
 | **Bahasa** | Indie v5 |
 | **File utama** | [`smc.indie`](smc.indie) |
 | **Platform** | Exness Terminal (Web) |
@@ -125,7 +125,7 @@ Proyek memakai [Semantic Versioning](https://semver.org/):
 | [`CHANGELOG.md`](CHANGELOG.md) | Catatan tiap rilis |
 | Git tag | `v1.0.0`, `v1.1.0`, … |
 
-Rilis saat ini: **v1.0.0** (2026-09-02).
+Rilis saat ini: **v1.0.1** (2026-09-03).
 
 Header di `smc.indie` juga mencantumkan versi yang sama.
 

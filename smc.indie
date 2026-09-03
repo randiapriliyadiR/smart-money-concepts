@@ -1,6 +1,6 @@
 # indie:lang_version = 5
 # Smart Money Concepts for TakeProfit / Exness Terminal
-# Version: 1.0.0
+# Version: 1.0.1
 # Pure SMC port (no third-party branding). Historical display mode.
 
 from math import nan, isnan
@@ -31,7 +31,7 @@ _FONT_TINY = 8
 _FONT_SMALL = 10
 _FONT_NORMAL = 12
 
-_OB_POOL = 6
+_OB_POOL = 8
 _FVG_POOL = 6
 _STRUCT_POOL = 12
 _EQHL_POOL = 6
@@ -98,9 +98,9 @@ def LevelsContext(self) -> tuple[float, float, float, float]:
 
 # ── Order Blocks ──────────────────────────────────────────────────────────────
 @param.bool('show_internal_ob', default=True, title='Internal Order Blocks')
-@param.int('internal_ob_count', default=4, min=1, max=6, title='Internal OB Count')
-@param.bool('show_swing_ob', default=False, title='Swing Order Blocks')
-@param.int('swing_ob_count', default=4, min=1, max=6, title='Swing OB Count')
+@param.int('internal_ob_count', default=5, min=1, max=8, title='Internal OB Count')
+@param.bool('show_swing_ob', default=True, title='Swing Order Blocks')
+@param.int('swing_ob_count', default=5, min=1, max=8, title='Swing OB Count')
 @param.str('ob_filter', default='Atr', options=['Atr', 'Cumulative Mean Range'], title='Order Block Filter')
 @param.str('ob_mitigation', default='High/Low', options=['Close', 'High/Low'], title='Order Block Mitigation')
 @param.color('internal_bull_ob_color', default=rgba(49, 121, 245, 0.20), title='Internal Bullish OB')

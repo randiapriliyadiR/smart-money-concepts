@@ -4,6 +4,18 @@ All notable changes to this project are documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/), and this project uses [Semantic Versioning](https://semver.org/).
 
+## [1.0.1] - 2026-09-03
+
+### Changed
+
+- Swing Order Blocks now **on** by default (matches LuxAlgo Pine defaults)
+- OB pool increased from 6 → 8 (more OB zones visible, esp. older swing OBs)
+- Internal & Swing OB count default raised to 5 (max 8)
+
+### Fixed
+
+- Swing OB zones that were far from current price now appear (previously dropped by small pool)
+
 ## [1.0.0] - 2026-09-02
 
 ### Added
@@ -26,4 +38,5 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/), and this
 - Alerts from Pine `alertcondition` are not ported; use TakeProfit Cloud Alerts if needed
 - Reference Pine script kept as `smc-luxalgo.ts` (not for Exness)
 
+[1.0.1]: https://github.com/randiapriliyadiR/smart-money-concepts/releases/tag/v1.0.1
 [1.0.0]: https://github.com/randiapriliyadiR/smart-money-concepts/releases/tag/v1.0.0
