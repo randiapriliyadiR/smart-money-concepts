@@ -44,6 +44,23 @@ Candle **tidak** diwarnai ulang — warna body mengikuti broker.
 
 > Setelah update script: hapus indikator lama dari chart, lalu apply ulang agar state drawing bersih.
 
+### Akun yang didukung (penting)
+
+Custom indicator Indie **hanya** jalan di akun **MT5** yang tetap bisa dibuka di Exness Terminal.
+
+Akun **Exness Terminal Only** (bukan akun MT5) **tidak** mendukung custom indicator. Error yang muncul biasanya:
+
+> Bad request: The selected server and account type combination is not supported.
+
+Kedua tipe akun bisa terlihat sama di Exness Terminal, tapi backend-nya berbeda:
+
+| Mode akun | Custom indicator (Indie) |
+|-----------|--------------------------|
+| **MT5** (bisa dibuka di Exness Terminal) | Didukung |
+| **Exness Terminal Only** | Tidak didukung |
+
+Kalau error itu muncul di satu device/akun: cek Personal Area Exness apakah akunnya **MT5** atau **Terminal Only**. Bukan masalah script, dan tidak terkait cent vs USD.
+
 ---
 
 ## File proyek
@@ -62,15 +79,15 @@ smart-money-concepts/
 
 ## Settings singkat
 
-**Aktif by default:** Internal structure, Internal OB, EQH/EQL, Strong/Weak HL.
+**Aktif by default:** Internal structure, Internal OB, Swing OB, EQH/EQL, Strong/Weak HL.
 
-**Mati by default (aktifkan bila perlu):** Swing OB, FVG, Daily/Weekly/Monthly, Premium/Discount zones.
+**Mati by default (aktifkan bila perlu):** FVG, Daily/Weekly/Monthly, Premium/Discount zones.
 
 | Setting | Saran |
 |---------|--------|
 | Max Structure Drawings | Default `10` (max `12`) — turunkan jika chart berat |
 | FVG timeframe | ≥ timeframe chart |
-| Internal / Swing OB Count | Max `6` (batas pool Indie) |
+| Internal / Swing OB Count | Default `5` (max `8`) |
 
 ---
 
@@ -100,6 +117,7 @@ Agar lebih ringan:
 - Field instance hanya boleh dibuat di top-level `__init__`
 - Pine `alertcondition` tidak ada di Indie — gunakan Cloud Alerts TakeProfit
 - Ganti TF = recalc penuh (normal)
+- Akun **Exness Terminal Only** tidak mendukung custom indicator; gunakan akun **MT5**
 
 ---
 

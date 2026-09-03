@@ -4,6 +4,12 @@ All notable changes to this project are documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/), and this project uses [Semantic Versioning](https://semver.org/).
 
+## [Unreleased]
+
+### Changed
+
+- README: catatan akun **MT5** vs **Exness Terminal Only** untuk custom indicator Indie
+
 ## [1.0.1] - 2026-09-03
 
 ### Changed
