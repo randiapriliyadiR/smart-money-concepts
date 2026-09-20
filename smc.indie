@@ -1,6 +1,6 @@
 # indie:lang_version = 5
 # Smart Money Concepts for TakeProfit / Exness Terminal
-# Version: 1.0.1
+# Version: 1.1.0
 # Pure SMC port (no third-party branding). Historical display mode.
 
 from math import nan, isnan
