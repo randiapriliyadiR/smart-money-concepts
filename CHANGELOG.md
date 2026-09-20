@@ -6,9 +6,32 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/), and this
 
 ## [Unreleased]
 
+## [1.1.0] - 2026-09-20
+
+### Added
+
+- MT5 overlay indicator `SMC.mq5` using the same engine as the scanner (BOS/CHoCH, OB, FVG, Premium/Discount, EQHL, D/W/M)
+- `SMC_Scanner.mq5` multi-pair Telegram scanner (no orders, no TP/SL)
+- Shared `CSmcEngine` + `CSmcSnapshot` so chart drawings and alerts cannot diverge
+- One-shot dedup (rising-edge zone entry, persist sent keys)
+- Telegram channel + forum topic (`message_thread_id`)
+- Script `Scripts/Test_SmcEngine.mq5` / Navigator `SMC_Test_SmcEngine`
+- Strategy Tester smoke EA `SMC_Smoke.mq5` (`Tester/smc_smoke.ini`)
+
 ### Changed
 
-- README: catatan akun **MT5** vs **Exness Terminal Only** untuk custom indicator Indie
+- MT5 FVG defaults for signal parity: **on**, auto threshold **off**, extend **5**
+- MT5 Premium/Discount zones **on** by default so the overlay matches alerts
+- README: catatan akun **MT5** vs **Exness Terminal Only** for custom Indie indicators
+
+### Fixed
+
+- Engine accepts short series (FVG needs 3 bars; previously rejected under 10)
+- Dedup self-test is isolated so it cannot write `TEST|` keys into live `smc_sent_keys.csv`
+
+### Removed
+
+- `smc-luxalgo.ts` Pine reference (runtime source of truth is `smc.indie` / `CSmcEngine`)
 
 ## [1.0.1] - 2026-09-03
 
@@ -42,7 +65,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/), and this
 
 - Candles are not recolored (broker candle colors stay intact)
 - Alerts from Pine `alertcondition` are not ported; use TakeProfit Cloud Alerts if needed
-- Reference Pine script kept as `smc-luxalgo.ts` (not for Exness)
 
+[1.1.0]: https://github.com/randiapriliyadiR/smart-money-concepts/releases/tag/v1.1.0
 [1.0.1]: https://github.com/randiapriliyadiR/smart-money-concepts/releases/tag/v1.0.1
 [1.0.0]: https://github.com/randiapriliyadiR/smart-money-concepts/releases/tag/v1.0.0

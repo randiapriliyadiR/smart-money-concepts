@@ -1,159 +1,127 @@
 # Smart Money Concepts
 
-[![Version](https://img.shields.io/badge/version-1.0.1-blue.svg)](CHANGELOG.md)
+[![Version](https://img.shields.io/badge/version-1.1.0-blue.svg)](CHANGELOG.md)
+[![MT5](https://img.shields.io/badge/MT5-indicator%20%2B%20EA-blue.svg)](#metatrader-5)
 [![Indie](https://img.shields.io/badge/Indie-v5-green.svg)](https://takeprofit.com/docs/indie)
-[![Platform](https://img.shields.io/badge/Exness-TakeProfit-orange.svg)](https://get.exness.help/hc/en-us/articles/27261267831068-Custom-indicators-in-Exness-Terminal)
 [![License](https://img.shields.io/badge/license-MIT-lightgrey.svg)](LICENSE)
 
-Indikator **Smart Money Concepts (SMC)** untuk **Exness Terminal** (TakeProfit Indie).  
-Port logika SMC murni — tanpa branding pihak ketiga.
+Port **Smart Money Concepts** (BOS/CHoCH, Order Block, FVG, Premium/Discount) tanpa branding pihak ketiga.
+
+Overlay chart dan alert Telegram memakai **satu engine** (`CSmcEngine`). Matikan gambar di chart tidak mengubah angka yang dipakai sinyal.
 
 | | |
 |---|---|
-| **Versi** | `1.0.1` |
-| **Bahasa** | Indie v5 |
-| **File utama** | [`smc.indie`](smc.indie) |
-| **Platform** | Exness Terminal (Web) |
+| **Versi** | `1.1.0` |
+| **MT5** | Indikator `SMC` + EA `SMC_Scanner` |
+| **Exness** | [`smc.indie`](smc.indie) (TakeProfit Indie v5) |
 
 ---
 
-## Fitur
+## Isi repo
 
-| Modul | Keterangan | Default |
-|-------|------------|---------|
-| Internal / Swing structure | **BOS** & **CHoCH** | On |
-| Order Blocks | Internal (+ opsional Swing), dengan mitigasi | Internal on |
-| EQH / EQL | Equal highs & lows | On |
-| Strong / Weak HL | Label high & low | On |
-| Fair Value Gaps | FVG multi-timeframe | Off |
-| Daily / Weekly / Monthly | PDH/PDL, PWH/PWL, PMH/PML | Off |
-| Premium / Discount | Zona premium, equilibrium, discount | Off |
-| Style | Colored atau Monochrome | Colored |
+Clone ke `MQL5/Experts/Smart Money Concepts`.
 
-Candle **tidak** diwarnai ulang — warna body mengikuti broker.
+```
+Smart Money Concepts/
+├── SMC_Scanner.mq5              # EA scanner Telegram (pasang di chart)
+├── SMC_Smoke.mq5                # self-test Strategy Tester (bukan scanner)
+├── Include/                     # engine, draw, confluence, Telegram, dedup
+├── Indicators/SMC.mq5           # overlay — copy ke MQL5/Indicators/
+├── Scripts/Test_SmcEngine.mq5   # self-test — copy ke MQL5/Scripts/
+├── Tester/smc_smoke.ini         # config tester untuk SMC_Smoke
+└── smc.indie                    # indikator Exness Terminal
+```
+
+| File | Fungsi |
+|------|--------|
+| `SMC_Scanner` | Notifikasi zona (tidak membuka order) |
+| `SMC` | Gambar BOS/CHoCH/OB/FVG di chart |
+| `SMC_Smoke` | Tes otomatis di Strategy Tester |
+| `SMC_Test_SmcEngine` | Tes yang sama, dijalankan sebagai script Navigator |
 
 ---
 
-## Instalasi (Exness)
+## MetaTrader 5
+
+### Instalasi
+
+1. Clone repo ini ke `MQL5/Experts/Smart Money Concepts`.
+2. Salin `Indicators/SMC.mq5` → `MQL5/Indicators/SMC.mq5`.
+3. Salin `Scripts/Test_SmcEngine.mq5` → `MQL5/Scripts/SMC_Test_SmcEngine.mq5` (opsional).
+4. Compile di MetaEditor:
+   - `MQL5/Indicators/SMC.mq5`
+   - `MQL5/Experts/Smart Money Concepts/SMC_Scanner.mq5`
+   - opsional: `SMC_Smoke.mq5` dan `SMC_Test_SmcEngine.mq5`
+
+Kedua file salinan sudah meng-include engine di folder Experts ini. Jangan compile overlay dari dalam folder Experts — Navigator hanya memuat `MQL5/Indicators`.
+
+### Overlay `SMC`
+
+- `InpShowDrawings` — tampilkan atau sembunyikan object `SMC:`. Engine tetap dihitung.
+- Max Structure Drawings default **10** (BOS/CHoCH lama tidak menumpuk tanpa batas).
+- Default selaras alert: FVG **on**, auto threshold **off**, extend **5**, Premium/Discount **on**.
+- Candle tidak diwarnai ulang.
+
+Pasang ke chart (mis. XAUUSD M15) dari Navigator → Indicators → **SMC**.
+
+### Scanner `SMC_Scanner` (Telegram, tanpa order)
+
+Tidak ada TP, SL, lot, atau `OrderSend`. Hanya **entri zona + bias tren**.
+
+**Default scan**
+
+- Pair: `EURUSD,GBPUSD,USDJPY,USDCHF,AUDUSD,USDCAD,NZDUSD,XAUUSD` (suffix broker di-resolve)
+- TF sinyal: `M15,M30,H1,H4`
+- Bias: H4; sinyal H4 memakai bias **D1**
+- Drawing di chart EA default **off**
+
+**BUY:** bias HTF bullish + harga di Discount + Swing/Internal OB atau FVG bullish yang masih aktif.  
+**SELL:** bias HTF bearish + harga di Premium + OB/FVG bearish aktif.
+
+Satu zona = satu Telegram (rising-edge). Kunci terkirim disimpan di `Common/Files/smc_sent_keys.csv`. Harga yang sudah di dalam zona saat EA di-attach tidak di-spam.
+
+### Telegram
+
+1. BotFather → token. Tambahkan bot ke channel sebagai **admin** (Post messages), atau ke group forum.
+2. Tools → Options → Expert Advisors → Allow WebRequest: `https://api.telegram.org`
+3. Input EA:
+   - `InpTgBotToken`
+   - `InpTgChatId` — `@channel` atau `-100xxxxxxxxxx`
+   - `InpTgTopicId` — `0` = channel/chat; `>0` = topik forum (`message_thread_id`)
+4. Link topik `https://t.me/c/2412345678/42` → ChatId `-1002412345678`, TopicId `42`.
+5. `InpTgTestOnInit` mengirim pesan tes (bukan sinyal).
+
+Format sinyal:
+
+```text
+🟢 SMC BUY · XAUUSD · M15
+
+📈 Bias H4: Bullish
+🎯 Entry: Discount
+📦 Zone: Swing OB
+📏 Range: 2345.20 – 2348.80
+💵 Price: 2346.55
+```
+
+---
+
+## Tes
+
+Strategy Tester: Expert `Smart Money Concepts\SMC_Smoke`, config [`Tester/smc_smoke.ini`](Tester/smc_smoke.ini). Hasil `pass=` / `fail=` ditulis ke `Common/Files/smc_smoke_result.txt`.
+
+Atau tarik script `SMC_Test_SmcEngine` ke chart. Journal harus `SMC tests passed`.
+
+---
+
+## Exness Terminal (Indie)
 
 1. Buka **Exness Terminal (Web)** dan login.
-2. Buka **Indicators** → buat script Indie baru.
-3. Paste seluruh isi [`smc.indie`](smc.indie).
-4. **Save / Compile**, lalu apply ke chart.
-5. Jika ada error syntax, coba [TakeProfit AI for Exness](https://takeprofit.com/ai/exness).
+2. Indicators → script Indie baru → paste [`smc.indie`](smc.indie).
+3. Save / Compile, apply ke chart.
 
-> Setelah update script: hapus indikator lama dari chart, lalu apply ulang agar state drawing bersih.
+Custom indicator Indie **hanya** jalan di akun **MT5** yang bisa dibuka di Exness Terminal. Akun **Exness Terminal Only** tidak mendukung custom indicator.
 
-### Akun yang didukung (penting)
-
-Custom indicator Indie **hanya** jalan di akun **MT5** yang tetap bisa dibuka di Exness Terminal.
-
-Akun **Exness Terminal Only** (bukan akun MT5) **tidak** mendukung custom indicator. Error yang muncul biasanya:
-
-> Bad request: The selected server and account type combination is not supported.
-
-Kedua tipe akun bisa terlihat sama di Exness Terminal, tapi backend-nya berbeda:
-
-| Mode akun | Custom indicator (Indie) |
-|-----------|--------------------------|
-| **MT5** (bisa dibuka di Exness Terminal) | Didukung |
-| **Exness Terminal Only** | Tidak didukung |
-
-Kalau error itu muncul di satu device/akun: cek Personal Area Exness apakah akunnya **MT5** atau **Terminal Only**. Bukan masalah script, dan tidak terkait cent vs USD.
-
----
-
-## File proyek
-
-```
-smart-money-concepts/
-├── smc.indie          # Indikator (paste ke Exness)
-├── VERSION            # SemVer saat ini
-├── CHANGELOG.md       # Riwayat rilis
-├── LICENSE            # MIT
-├── README.md
-└── smc-luxalgo.ts     # Referensi Pine (bukan untuk Exness)
-```
-
----
-
-## Settings singkat
-
-**Aktif by default:** Internal structure, Internal OB, Swing OB, EQH/EQL, Strong/Weak HL.
-
-**Mati by default (aktifkan bila perlu):** FVG, Daily/Weekly/Monthly, Premium/Discount zones.
-
-| Setting | Saran |
-|---------|--------|
-| Max Structure Drawings | Default `10` (max `12`) — turunkan jika chart berat |
-| FVG timeframe | ≥ timeframe chart |
-| Internal / Swing OB Count | Default `5` (max `8`) |
-
----
-
-## Performa & batasan Indie
-
-TakeProfit membatasi **maks. 100 drawing changes per bar update**.
-
-Yang sudah diterapkan:
-
-- Pool drawing terbatas (structure ≤12, EQH/FVG/OB ≤6)
-- `chart.draw` digabung di bar terakhir
-- OB hanya yang aktif yang digambar
-- Modul MTF (FVG / D-W-M) di-skip di `calc` jika dimatikan
-- State di-reset saat recalc / ganti timeframe (`bar_index == 0`)
-
-Agar lebih ringan:
-
-1. Turunkan **Max Structure Drawings**
-2. Matikan modul yang tidak dipakai
-3. Hindari menyalakan FVG + Daily + Weekly + Monthly sekaligus
-
-> Dengan pool terbatas, hanya **N structure terakhir** yang tampil (bukan seluruh history unlimited seperti Pine).
-
-### Batasan lain
-
-- `# indie:lang_version = 5`
-- Field instance hanya boleh dibuat di top-level `__init__`
-- Pine `alertcondition` tidak ada di Indie — gunakan Cloud Alerts TakeProfit
-- Ganti TF = recalc penuh (normal)
-- Akun **Exness Terminal Only** tidak mendukung custom indicator; gunakan akun **MT5**
-
----
-
-## Verifikasi cepat
-
-Pada chart contoh (mis. XAUUSD M15):
-
-1. Internal BOS/CHoCH muncul (garis dashed).
-2. Warna candle tetap default broker.
-3. Toggle modul lain di settings → objek muncul sesuai toggle.
-4. Ganti timeframe → indikator tetap muncul setelah recalc.
-5. Zoom in/out → drawing tidak hilang.
-
----
-
-## Versioning
-
-Proyek memakai [Semantic Versioning](https://semver.org/):
-
-| File | Isi |
-|------|-----|
-| [`VERSION`](VERSION) | `MAJOR.MINOR.PATCH` |
-| [`CHANGELOG.md`](CHANGELOG.md) | Catatan tiap rilis |
-| Git tag | `v1.0.0`, `v1.1.0`, … |
-
-Rilis saat ini: **v1.0.1** (2026-09-03).
-
-Header di `smc.indie` juga mencantumkan versi yang sama.
-
----
-
-## Referensi
-
-- [TakeProfit Indie Docs](https://takeprofit.com/docs/indie)
-- [Drawings API](https://takeprofit.com/docs/indie/Plotting-and-drawing/Drawings-lines-labels)
-- [Custom indicators di Exness](https://get.exness.help/hc/en-us/articles/27261267831068-Custom-indicators-in-Exness-Terminal)
+Default Indie (FVG/zones off, extend 1) **berbeda** dari default overlay MT5. Untuk parity dengan scanner, pakai indikator MT5.
 
 ---
 
