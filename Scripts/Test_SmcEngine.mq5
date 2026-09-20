@@ -1,5 +1,5 @@
 #property copyright "Smart Money Concepts"
-#property version   "1.1.0"
+#property version   "1.1.1"
 #property script_show_inputs
 #property description "Offline checks for SmcEngine, confluence, and one-shot dedup"
 

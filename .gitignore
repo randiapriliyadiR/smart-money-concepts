@@ -2,7 +2,6 @@
 Thumbs.db
 desktop.ini
 *.log
-*.ex5
 .idea/
 .vscode/
 *.pyc

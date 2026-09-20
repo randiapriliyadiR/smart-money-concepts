@@ -1,6 +1,6 @@
 # Smart Money Concepts
 
-[![Version](https://img.shields.io/badge/version-1.1.0-blue.svg)](CHANGELOG.md)
+[![Version](https://img.shields.io/badge/version-1.1.1-blue.svg)](CHANGELOG.md)
 [![MT5](https://img.shields.io/badge/MT5-indicator%20%2B%20EA-blue.svg)](#metatrader-5)
 [![Indie](https://img.shields.io/badge/Indie-v5-green.svg)](https://takeprofit.com/docs/indie)
 [![License](https://img.shields.io/badge/license-MIT-lightgrey.svg)](LICENSE)
@@ -11,8 +11,8 @@ Overlay chart dan alert Telegram memakai **satu engine** (`CSmcEngine`). Matikan
 
 | | |
 |---|---|
-| **Versi** | `1.1.0` |
-| **MT5** | Indikator `SMC` + EA `SMC_Scanner` |
+| **Versi** | `1.1.1` |
+| **MT5** | Indikator `SMC` + EA `SMC_Scanner` (+ `.ex5` siap pakai) |
 | **Exness** | [`smc.indie`](smc.indie) (TakeProfit Indie v5) |
 
 ---
@@ -23,14 +23,16 @@ Clone ke `MQL5/Experts/Smart Money Concepts`.
 
 ```
 Smart Money Concepts/
-├── SMC_Scanner.mq5              # EA scanner Telegram (pasang di chart)
-├── SMC_Smoke.mq5                # self-test Strategy Tester (bukan scanner)
+├── SMC_Scanner.mq5 / .ex5       # EA scanner Telegram
+├── SMC_Smoke.mq5 / .ex5         # self-test Strategy Tester
 ├── Include/                     # engine, draw, confluence, Telegram, dedup
-├── Indicators/SMC.mq5           # overlay — copy ke MQL5/Indicators/
-├── Scripts/Test_SmcEngine.mq5   # self-test — copy ke MQL5/Scripts/
-├── Tester/smc_smoke.ini         # config tester untuk SMC_Smoke
-└── smc.indie                    # indikator Exness Terminal
+├── Indicators/SMC.mq5 / .ex5    # overlay — copy ke MQL5/Indicators/
+├── Scripts/Test_SmcEngine.mq5 / .ex5
+├── Tester/smc_smoke.ini
+└── smc.indie
 ```
+
+Binary `.ex5` ikut di-versioning (compile MetaEditor X64). Restart MT5 atau Refresh Navigator setelah pull.
 
 | File | Fungsi |
 |------|--------|
@@ -43,9 +45,17 @@ Smart Money Concepts/
 
 ## MetaTrader 5
 
-### Instalasi
+### Instalasi cepat (pakai `.ex5`)
 
-1. Clone repo ini ke `MQL5/Experts/Smart Money Concepts`.
+1. Clone / pull repo ke `MQL5/Experts/Smart Money Concepts`.
+2. Salin `Indicators/SMC.ex5` → `MQL5/Indicators/SMC.ex5`.
+3. Opsional: salin `Scripts/Test_SmcEngine.ex5` → `MQL5/Scripts/SMC_Test_SmcEngine.ex5`.
+4. Restart MT5 (atau klik kanan Navigator → Refresh).
+5. Pasang `SMC_Scanner` dari Experts; `SMC` dari Indicators.
+
+### Instalasi dari source
+
+1. Clone repo ke `MQL5/Experts/Smart Money Concepts`.
 2. Salin `Indicators/SMC.mq5` → `MQL5/Indicators/SMC.mq5`.
 3. Salin `Scripts/Test_SmcEngine.mq5` → `MQL5/Scripts/SMC_Test_SmcEngine.mq5` (opsional).
 4. Compile di MetaEditor:

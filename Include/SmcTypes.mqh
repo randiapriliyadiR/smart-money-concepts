@@ -1,7 +1,7 @@
 #ifndef SMC_TYPES_MQH
 #define SMC_TYPES_MQH
 
-#define SMC_VERSION              "1.1.0"
+#define SMC_VERSION              "1.1.1"
 #define SMC_OBJ_PREFIX           "SMC:"
 #define SMC_GV_SENT_PREFIX       "SMC.sent."
 #define SMC_SENT_FILE            "smc_sent_keys.csv"

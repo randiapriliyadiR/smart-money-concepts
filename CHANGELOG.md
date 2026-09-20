@@ -6,6 +6,17 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/), and this
 
 ## [Unreleased]
 
+## [1.1.1] - 2026-09-20
+
+### Added
+
+- Precompiled MetaTrader 5 binaries (X64) in the repo: `SMC_Scanner.ex5`, `SMC_Smoke.ex5`, `Indicators/SMC.ex5`, `Scripts/Test_SmcEngine.ex5`
+- GitHub Release assets for the same `.ex5` files
+
+### Changed
+
+- Stop ignoring `*.ex5` so compiled builds stay in version control with each release
+
 ## [1.1.0] - 2026-09-20
 
 ### Added
@@ -66,6 +77,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/), and this
 - Candles are not recolored (broker candle colors stay intact)
 - Alerts from Pine `alertcondition` are not ported; use TakeProfit Cloud Alerts if needed
 
+[1.1.1]: https://github.com/randiapriliyadiR/smart-money-concepts/releases/tag/v1.1.1
 [1.1.0]: https://github.com/randiapriliyadiR/smart-money-concepts/releases/tag/v1.1.0
 [1.0.1]: https://github.com/randiapriliyadiR/smart-money-concepts/releases/tag/v1.0.1
 [1.0.0]: https://github.com/randiapriliyadiR/smart-money-concepts/releases/tag/v1.0.0

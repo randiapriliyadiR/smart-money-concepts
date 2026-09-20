@@ -1,6 +1,6 @@
 #property copyright   "Smart Money Concepts"
 #property link        ""
-#property version     "1.1.0"
+#property version     "1.1.1"
 #property description "Multi-pair SMC scanner. Telegram on confluence entry. No orders, no TP/SL."
 #property strict
 

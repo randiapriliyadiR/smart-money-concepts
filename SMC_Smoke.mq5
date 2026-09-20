@@ -1,5 +1,5 @@
 #property copyright "Smart Money Concepts"
-#property version   "1.1.0"
+#property version   "1.1.1"
 #property description "OnInit smoke test for SMC engine/indicator formulas. Writes Common/Files/smc_smoke_result.txt"
 #property strict
 

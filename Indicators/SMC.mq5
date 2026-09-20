@@ -1,6 +1,6 @@
 #property copyright   "Smart Money Concepts"
 #property link        ""
-#property version     "1.1.0"
+#property version     "1.1.1"
 #property description "Smart Money Concepts overlay (BOS, CHoCH, OB, FVG, Premium/Discount)"
 #property indicator_chart_window
 #property indicator_plots 0
